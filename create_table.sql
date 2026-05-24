@@ -9,7 +9,7 @@ CREATE TABLE meals (
 );
 
 CREATE TABLE meal_templates (
-  id text PRIMARY KEY DEFAULT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(6))),
+  id text PRIMARY KEY DEFAULT (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(6)))),
   name text NOT NULL,
   calories real,
   protein_g real,
