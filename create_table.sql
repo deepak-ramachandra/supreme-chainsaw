@@ -17,3 +17,16 @@ CREATE TABLE meal_templates (
   fat_g real,
   notes text DEFAULT '' NOT NULL
 );
+
+
+CREATE TABLE transactions (
+  transaction_id  TEXT PRIMARY KEY,
+  authorized_date TEXT,
+  amount          REAL NOT NULL,
+  merchant_name   TEXT,
+  category        TEXT
+);
+
+CREATE INDEX idx_txn_date ON transactions(authorized_date);
+
+CREATE TABLE sync_state (id INTEGER PRIMARY KEY CHECK (id = 1), cursor TEXT);
