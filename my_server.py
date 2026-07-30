@@ -5,21 +5,15 @@ from typing import Annotated, Optional
 from datetime import datetime, timedelta
 import pytz
 import pandas as pd
-import libsql  # type: ignore
 from fastmcp import FastMCP
+from utils import get_db
+from transaction_manager import TransactionManager
 
 mcp = FastMCP("Hevy MCP Server")
 
 NYC = pytz.timezone("America/New_York")
 
-
-def get_db(sync: bool = False):
-    url = os.environ.get("TURSO_DATABASE_URL", "")
-    token = os.environ.get("TURSO_AUTH_TOKEN", "")
-    conn = libsql.connect("/tmp/nutrition.db", sync_url=url, auth_token=token)
-    if sync:
-        conn.sync()
-    return conn
+txn_mgr = TransactionManager()
 
 
 def _nyc_day_to_utc_range(date_str: str) -> tuple[str, str]:
@@ -382,6 +376,66 @@ def log_meal_from_template(
         (logged_at, meal_type),
     ).fetchone()
     return json.dumps(_row_to_dict(meal_row))
+
+
+def _txn_row_to_dict(row) -> dict:
+    return {
+        "transaction_id": row[0],
+        "authorized_date": row[1],
+        "amount": row[2],
+        "merchant_name": row[3],
+        "category": row[4],
+    }
+
+
+@mcp.tool
+def sync_transactions() -> str:
+    """Sync transactions from Plaid into the local database, following the
+    saved cursor. Returns counts of added, modified, and removed transactions."""
+    return json.dumps(txn_mgr.sync())
+
+
+@mcp.tool
+def get_transactions_by_date(
+    date: Annotated[str, "Date in YYYY-MM-DD format"],
+) -> str:
+    """Get all stored transactions authorized on a specific date."""
+    rows = txn_mgr.get_transactions_by_date(date)
+    return json.dumps([_txn_row_to_dict(r) for r in rows])
+
+
+@mcp.tool
+def get_transactions_by_date_range(
+    start_date: Annotated[str, "Start date YYYY-MM-DD (inclusive)"],
+    end_date: Annotated[str, "End date YYYY-MM-DD (inclusive)"],
+) -> str:
+    """Get all stored transactions authorized within a date range."""
+    rows = txn_mgr.get_transactions_by_date_range(start_date, end_date)
+    return json.dumps([_txn_row_to_dict(r) for r in rows])
+
+
+@mcp.tool
+def get_transactions_by_merchant(
+    merchant_name: Annotated[str, "Exact merchant name to match"],
+) -> str:
+    """Get all stored transactions for a given merchant."""
+    rows = txn_mgr.get_transactions_by_merchant(merchant_name)
+    return json.dumps([_txn_row_to_dict(r) for r in rows])
+
+
+@mcp.tool
+def get_transactions_by_category(
+    category: Annotated[str, "Exact category string to match"],
+) -> str:
+    """Get all stored transactions matching a category."""
+    rows = txn_mgr.get_transactions_by_category(category)
+    return json.dumps([_txn_row_to_dict(r) for r in rows])
+
+
+@mcp.tool
+def get_recurring_transactions() -> str:
+    """Get recurring transaction streams directly from Plaid (not the local DB)."""
+    return json.dumps(txn_mgr.get_recurring_transactions())
 
 
 if __name__ == "__main__":
