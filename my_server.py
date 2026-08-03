@@ -68,22 +68,21 @@ def get_workout_count() -> str:
 @mcp.tool
 def log_meal(
     meal_type: Annotated[str, "One of: breakfast, lunch, dinner, snack"],
+    logged_at: Annotated[
+        str,
+        "ISO 8601 timestamp INCLUDING a UTC offset (e.g. '2026-08-03T08:30:00-04:00'), "
+        "representing the moment the meal was actually eaten in the user's local time. "
+        "Always determine and pass this explicitly — never omit it. Never pass a naive "
+        "timestamp with no offset — it makes the stored instant ambiguous and breaks "
+        "date-based queries.",
+    ],
     calories: Annotated[Optional[float], "Calories"] = None,
     protein_g: Annotated[Optional[float], "Protein in grams"] = None,
     carbs_g: Annotated[Optional[float], "Carbs in grams"] = None,
     fat_g: Annotated[Optional[float], "Fat in grams"] = None,
-    logged_at: Annotated[
-        Optional[str],
-        "ISO 8601 timestamp INCLUDING a UTC offset (e.g. '2026-08-03T08:30:00-04:00'), "
-        "representing the moment the meal was actually eaten in the user's local time. "
-        "Never pass a naive timestamp with no offset — it makes the stored instant "
-        "ambiguous and breaks date-based queries. Defaults to now (UTC) if omitted.",
-    ] = None,
     desc: Annotated[Optional[str], "Description of the meal"] = None,
 ) -> str:
     """Log a meal to the database."""
-    if logged_at is None:
-        logged_at = datetime.now(pytz.utc).isoformat()
     conn = get_db()
     conn.execute(
         "INSERT INTO meals (meal_type, calories, protein_g, carbs_g, fat_g, logged_at, desc) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -342,12 +341,13 @@ def log_meal_from_template(
     template_id: Annotated[str, "ID of the meal template to log"],
     meal_type: Annotated[str, "One of: breakfast, lunch, dinner, snack"],
     logged_at: Annotated[
-        Optional[str],
+        str,
         "ISO 8601 timestamp INCLUDING a UTC offset (e.g. '2026-08-03T08:30:00-04:00'), "
         "representing the moment the meal was actually eaten in the user's local time. "
-        "Never pass a naive timestamp with no offset — it makes the stored instant "
-        "ambiguous and breaks date-based queries. Defaults to now (UTC) if omitted.",
-    ] = None,
+        "Always determine and pass this explicitly — never omit it. Never pass a naive "
+        "timestamp with no offset — it makes the stored instant ambiguous and breaks "
+        "date-based queries.",
+    ],
 ) -> str:
     """Log a meal using macros from a saved template."""
     conn = get_db(sync=True)
@@ -357,8 +357,6 @@ def log_meal_from_template(
     if row is None:
         return f"No meal template found with id {template_id}"
     t = _template_row_to_dict(row)
-    if logged_at is None:
-        logged_at = datetime.now(pytz.utc).isoformat()
     conn.execute(
         "INSERT INTO meals (meal_type, calories, protein_g, carbs_g, fat_g, logged_at, desc) VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
