@@ -377,6 +377,179 @@ def log_meal_from_template(
     return json.dumps(_row_to_dict(meal_row))
 
 
+def _sleep_row_to_dict(row) -> dict:
+    return {
+        "id": row[0],
+        "slept_at": row[1],
+        "wake_at": row[2],
+        "quality": row[3],
+        "notes": row[4],
+        "created_at": row[5],
+        "sleep_date": row[6],
+        "duration_min": row[7],
+    }
+
+
+@mcp.tool
+def log_sleep(
+    slept_at: Annotated[
+        str,
+        "ISO 8601 timestamp INCLUDING a UTC offset (e.g. '2026-08-02T23:40:00-04:00'), "
+        "representing when the user fell asleep. Always determine and pass this "
+        "explicitly — never omit it. Never pass a naive timestamp with no offset — "
+        "it makes the stored instant ambiguous and breaks date-based queries.",
+    ],
+    wake_at: Annotated[
+        str,
+        "ISO 8601 timestamp INCLUDING a UTC offset (e.g. '2026-08-03T07:15:00-04:00'), "
+        "representing when the user woke up. Must be after slept_at.",
+    ],
+    quality: Annotated[int, "Sleep quality rating, 1 (worst) to 5 (best)"],
+    notes: Annotated[Optional[str], "Notes about the sleep"] = None,
+) -> str:
+    """Log a night's sleep to the database. There can only be one entry per
+    calendar date of waking — use update_sleep to correct an existing entry."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO sleep (slept_at, wake_at, quality, notes) VALUES (?, ?, ?, ?)",
+            (slept_at, wake_at, quality, notes),
+        )
+        conn.commit()
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            return (
+                f"A sleep entry already exists for wake date {wake_at[:10]}. "
+                "Use update_sleep to modify it."
+            )
+        raise
+    row = conn.execute(
+        "SELECT * FROM sleep WHERE wake_at = ? ORDER BY rowid DESC LIMIT 1",
+        (wake_at,),
+    ).fetchone()
+    return json.dumps(_sleep_row_to_dict(row))
+
+
+@mcp.tool
+def update_sleep(
+    sleep_id: Annotated[str, "ID of the sleep entry to update"],
+    slept_at: Annotated[
+        Optional[str],
+        "ISO 8601 timestamp INCLUDING a UTC offset, representing when the user fell "
+        "asleep. Never pass a naive timestamp with no offset.",
+    ] = None,
+    wake_at: Annotated[
+        Optional[str],
+        "ISO 8601 timestamp INCLUDING a UTC offset, representing when the user woke "
+        "up. Never pass a naive timestamp with no offset.",
+    ] = None,
+    quality: Annotated[
+        Optional[int], "Sleep quality rating, 1 (worst) to 5 (best)"
+    ] = None,
+    notes: Annotated[Optional[str], "Notes about the sleep"] = None,
+) -> str:
+    """Update fields of an existing sleep entry by ID."""
+    fields = {
+        "slept_at": slept_at,
+        "wake_at": wake_at,
+        "quality": quality,
+        "notes": notes,
+    }
+    updates = {k: v for k, v in fields.items() if v is not None}
+    if not updates:
+        return "No fields provided to update."
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [sleep_id]
+    conn = get_db()
+    try:
+        conn.execute(f"UPDATE sleep SET {set_clause} WHERE id = ?", tuple(values))
+        conn.commit()
+    except Exception as e:
+        if "UNIQUE" in str(e):
+            return "Another sleep entry already exists for that wake date."
+        raise
+    row = conn.execute("SELECT * FROM sleep WHERE id = ?", (sleep_id,)).fetchone()
+    if row is None:
+        return f"No sleep entry found with id {sleep_id}"
+    return json.dumps(_sleep_row_to_dict(row))
+
+
+@mcp.tool
+def get_sleep_by_date(
+    date: Annotated[str, "Wake date in YYYY-MM-DD format (NYC timezone)"],
+) -> str:
+    """Get the sleep entry for a specific NYC calendar date of waking."""
+    conn = get_db(sync=True)
+    rows = conn.execute(
+        "SELECT * FROM sleep WHERE sleep_date = ? ORDER BY sleep_date",
+        (date,),
+    ).fetchall()
+    return json.dumps([_sleep_row_to_dict(r) for r in rows])
+
+
+@mcp.tool
+def get_sleep_by_date_range(
+    start_date: Annotated[str, "Start date YYYY-MM-DD (inclusive, NYC timezone)"],
+    end_date: Annotated[str, "End date YYYY-MM-DD (inclusive, NYC timezone)"],
+) -> str:
+    """Get all sleep entries with a wake date in a range, filtered by NYC timezone."""
+    conn = get_db(sync=True)
+    rows = conn.execute(
+        "SELECT * FROM sleep WHERE sleep_date BETWEEN ? AND ? ORDER BY sleep_date",
+        (start_date, end_date),
+    ).fetchall()
+    return json.dumps([_sleep_row_to_dict(r) for r in rows])
+
+
+@mcp.tool
+def get_sleep_today() -> str:
+    """Get the sleep entry for today's wake date (NYC timezone)."""
+    today = datetime.now(NYC).strftime("%Y-%m-%d")
+    return get_sleep_by_date(today)
+
+
+@mcp.tool
+def get_sleep_summary(
+    start_date: Annotated[str, "Start date YYYY-MM-DD (inclusive, NYC timezone)"],
+    end_date: Annotated[str, "End date YYYY-MM-DD (inclusive, NYC timezone)"],
+) -> str:
+    """Get nightly sleep duration/quality and range averages (NYC timezone)."""
+    conn = get_db(sync=True)
+    rows = conn.execute(
+        """
+        SELECT sleep_date, duration_min, quality
+        FROM sleep
+        WHERE sleep_date BETWEEN ? AND ?
+        ORDER BY sleep_date
+        """,
+        (start_date, end_date),
+    ).fetchall()
+
+    by_date = {
+        r[0]: {
+            "duration_min": r[1],
+            "quality": r[2],
+        }
+        for r in rows
+    }
+
+    night_count = len(by_date)
+    total_sleep_min = sum(d["duration_min"] for d in by_date.values())
+    total_quality = sum(d["quality"] for d in by_date.values())
+
+    return json.dumps(
+        {
+            "by_date": by_date,
+            "night_count": night_count,
+            "total_sleep_min": total_sleep_min,
+            "avg_duration_min": round(total_sleep_min / night_count, 1)
+            if night_count
+            else 0,
+            "avg_quality": round(total_quality / night_count, 2) if night_count else 0,
+        }
+    )
+
+
 def _txn_row_to_dict(row) -> dict:
     return {
         "transaction_id": row[0],
