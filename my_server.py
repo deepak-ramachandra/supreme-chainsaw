@@ -557,6 +557,7 @@ def _txn_row_to_dict(row) -> dict:
         "amount": row[2],
         "merchant_name": row[3],
         "category": row[4],
+        "account_name": row[5],
     }
 
 

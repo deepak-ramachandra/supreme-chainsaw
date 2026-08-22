@@ -20,17 +20,18 @@ class TransactionManager:
     }
 
     UPSERT: str = """
-    INSERT INTO transactions (transaction_id, authorized_date, amount, merchant_name, category)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO transactions (transaction_id, authorized_date, amount, merchant_name, category, account_name)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(transaction_id) DO UPDATE SET
       authorized_date = excluded.authorized_date,
       amount          = excluded.amount,
       merchant_name   = excluded.merchant_name,
-      category        = excluded.category;
+      category        = excluded.category,
+      account_name    = excluded.account_name;
     """
 
     @staticmethod
-    def row(txn: dict[str, Any]) -> tuple:
+    def row(txn: dict[str, Any], account_name: str) -> tuple:
         """Convert a Plaid transaction dict into the tuple expected by UPSERT."""
         return (
             txn["transaction_id"],
@@ -38,6 +39,7 @@ class TransactionManager:
             txn["amount"],
             txn.get("merchant_name") or txn.get("name"),
             " ".join(txn.get("category") or []),
+            account_name,
         )
 
     def sync(self) -> dict[str, int]:
@@ -65,11 +67,17 @@ class TransactionManager:
                 )
                 r.raise_for_status()
                 page = r.json()
-
+                account_map = {
+                    a["account_id"]: f"{a['subtype']}-{a['mask']}"
+                    for a in page["accounts"]
+                }
                 with conn:  # one transaction: rows + cursor together
                     conn.executemany(
                         self.UPSERT,
-                        [self.row(t) for t in page["added"] + page["modified"]],
+                        [
+                            self.row(t, account_map.get(t["account_id"], "N/A"))
+                            for t in page["added"] + page["modified"]
+                        ],
                     )
                     conn.executemany(
                         "DELETE FROM transactions WHERE transaction_id = ?",
@@ -97,7 +105,7 @@ class TransactionManager:
         """Return all stored transactions authorized on the given date (YYYY-MM-DD)."""
         conn = get_db()
         cur = conn.execute(
-            "SELECT transaction_id, authorized_date, amount, merchant_name, category "
+            "SELECT transaction_id, authorized_date, amount, merchant_name, category, account_name "
             "FROM transactions WHERE authorized_date = ?",
             (date_str,),
         )
@@ -105,12 +113,14 @@ class TransactionManager:
         conn.close()
         return transactions
 
-    def get_transactions_by_date_range(self, start_date: str, end_date: str) -> list[Any]:
+    def get_transactions_by_date_range(
+        self, start_date: str, end_date: str
+    ) -> list[Any]:
         """Return all stored transactions authorized between start_date and
         end_date (inclusive, YYYY-MM-DD)."""
         conn = get_db()
         cur = conn.execute(
-            "SELECT transaction_id, authorized_date, amount, merchant_name, category "
+            "SELECT transaction_id, authorized_date, amount, merchant_name, category, account_name "
             "FROM transactions WHERE authorized_date BETWEEN ? AND ?",
             (start_date, end_date),
         )
@@ -122,7 +132,7 @@ class TransactionManager:
         """Return all stored transactions for an exact merchant name match."""
         conn = get_db()
         cur = conn.execute(
-            "SELECT transaction_id, authorized_date, amount, merchant_name, category "
+            "SELECT transaction_id, authorized_date, amount, merchant_name, category, account_name "
             "FROM transactions WHERE merchant_name = ?",
             (merchant_name,),
         )
@@ -135,7 +145,7 @@ class TransactionManager:
         (categories are stored as a single space-joined string, see `row`)."""
         conn = get_db()
         cur = conn.execute(
-            "SELECT transaction_id, authorized_date, amount, merchant_name, category "
+            "SELECT transaction_id, authorized_date, amount, merchant_name, category, account_name "
             "FROM transactions WHERE category = ?",
             (category,),
         )

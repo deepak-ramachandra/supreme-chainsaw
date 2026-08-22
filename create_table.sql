@@ -24,7 +24,8 @@ CREATE TABLE transactions (
   authorized_date TEXT,
   amount          REAL NOT NULL,
   merchant_name   TEXT,
-  category        TEXT
+  category        TEXT,
+  account_name    TEXT
 );
 
 CREATE INDEX idx_txn_date ON transactions(authorized_date);
