@@ -53,3 +53,12 @@ CREATE TABLE IF NOT EXISTS sleep (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sleep_date ON sleep(sleep_date);
+
+
+CREATE TABLE IF NOT EXISTS exercise_templates (
+  exercise_template_id TEXT PRIMARY KEY,
+  title                 TEXT NOT NULL,
+  type                  TEXT NOT NULL,
+  primary_muscle_group  TEXT NOT NULL,
+  equipment             TEXT NOT NULL
+);
