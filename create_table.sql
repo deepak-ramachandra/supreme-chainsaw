@@ -62,3 +62,40 @@ CREATE TABLE IF NOT EXISTS exercise_templates (
   primary_muscle_group  TEXT NOT NULL,
   equipment             TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS workouts (
+  workout_id   TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  routine_id   TEXT,
+  description  TEXT,
+  start_time   TEXT NOT NULL,   -- ISO 8601 UTC, e.g. '2026-08-31T22:20:06+00:00'
+  end_time     TEXT NOT NULL,
+  workout_date TEXT NOT NULL,   -- NYC calendar date (YYYY-MM-DD) of start_time
+  duration_min INTEGER,
+  updated_at   TEXT NOT NULL,
+  created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_workouts_date ON workouts(workout_date);
+
+CREATE TABLE IF NOT EXISTS workout_sets (
+  workout_id           TEXT NOT NULL REFERENCES workouts(workout_id),
+  exercise_index       INTEGER NOT NULL,
+  exercise_title       TEXT NOT NULL,
+  exercise_template_id TEXT,
+  superset_id          INTEGER,
+  set_index            INTEGER NOT NULL,
+  set_type             TEXT,
+  weight_kg            REAL,
+  reps                 INTEGER,
+  distance_meters      REAL,
+  duration_seconds     INTEGER,
+  rpe                  REAL,
+  custom_metric        REAL,
+  PRIMARY KEY (workout_id, exercise_index, set_index)
+);
+
+CREATE TABLE IF NOT EXISTS workout_sync_state (
+  id           INTEGER PRIMARY KEY CHECK (id = 1),
+  since_cursor TEXT
+);
