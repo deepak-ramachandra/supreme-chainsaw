@@ -8,12 +8,14 @@ import pandas as pd
 from fastmcp import FastMCP
 from utils import get_db
 from transaction_manager import TransactionManager
+from workout_manager import WorkoutManager
 
 mcp = FastMCP("Hevy MCP Server")
 
 NYC = pytz.timezone("America/New_York")
 
 txn_mgr = TransactionManager()
+workout_mgr = WorkoutManager()
 
 
 def _row_to_dict(row) -> dict:
@@ -31,16 +33,21 @@ def _row_to_dict(row) -> dict:
 
 
 @mcp.tool
+def sync_workouts() -> str:
+    """Sync workouts from Hevy into the local database, following the saved
+    since-cursor. Returns counts of added, modified, and removed workouts."""
+    return json.dumps(workout_mgr.sync())
+
+
+@mcp.tool
 def get_workouts(
-    page: Annotated[int, "Page number, starting from 1"],
-    page_size: Annotated[int, "Number of workouts per page (max 10)"],
+    start_date: Annotated[str, "Start date YYYY-MM-DD (inclusive, NYC timezone)"],
+    end_date: Annotated[str, "End date YYYY-MM-DD (inclusive, NYC timezone)"],
 ) -> str:
-    """Get a paginated list of workouts from Hevy, ordered newest to oldest."""
-    url = "https://api.hevyapp.com/v1/workouts"
-    params = {"page": page, "pageSize": page_size}
-    headers = {"accept": "application/json", "api-key": os.environ.get("HEVY", "")}
-    response = requests.get(url, headers=headers, params=params)
-    return response.text
+    """Get all stored workouts (with exercises/sets) whose NYC calendar date
+    falls within a range. Reads from the local database - call sync_workouts
+    first to pick up anything new from Hevy."""
+    return json.dumps(workout_mgr.get_workouts_by_date_range(start_date, end_date))
 
 
 @mcp.tool
@@ -58,11 +65,8 @@ def body_measurements(
 
 @mcp.tool
 def get_workout_count() -> str:
-    """Get the total number of workouts logged in Hevy."""
-    url = "https://api.hevyapp.com/v1/workouts/count"
-    headers = {"accept": "application/json", "api-key": os.environ.get("HEVY", "")}
-    response = requests.get(url, headers=headers)
-    return response.text
+    """Get the total number of workouts stored locally (post-sync)."""
+    return json.dumps(workout_mgr.get_workout_count())
 
 
 @mcp.tool

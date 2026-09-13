@@ -13,13 +13,14 @@ All timestamps are handled in the **America/New_York** timezone, so daily summar
 
 ## Tools
 
-### Workouts (Hevy)
+### Workouts
 
 | Tool | Description |
 |---|---|
-| `get_workouts` | Paginated list of workouts, newest first |
-| `get_workout_count` | Total number of workouts logged |
-| `body_measurements` | Paginated body measurements (weight, body fat, etc.) |
+| `sync_workouts` | Sync workouts from Hevy into the local database (since-cursor based) |
+| `get_workouts` | Workouts (with exercises/sets) whose date falls in a range — reads the local database, not Hevy |
+| `get_workout_count` | Total number of workouts stored locally (post-sync) |
+| `body_measurements` | Paginated body measurements (weight, body fat, etc.) — read directly from Hevy (not synced to the database) |
 
 ### Meal Logging
 
