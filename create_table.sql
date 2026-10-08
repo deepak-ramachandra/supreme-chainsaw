@@ -5,7 +5,8 @@ CREATE TABLE meals (
   protein_g REAL,
   carbs_g REAL,
   fat_g REAL,
-  logged_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime'))
+  logged_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S', 'now', 'localtime')),
+  `desc` text DEFAULT '' NOT NULL
 );
 
 CREATE TABLE meal_templates (
